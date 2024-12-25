@@ -19,17 +19,17 @@ pub mod raydium_automation {
         Ok(())
     }
 
-    pub fn create_pda(ctx: Context<CreatePDA>, owner: Pubkey, bump: u8) -> Result<()> {
+    pub fn create_pda(ctx: Context<CreatePDA>) -> Result<()> {
         let pda_account = &mut ctx.accounts.pda_account;
-        pda_account.owner = owner;
-        pda_account.bump = bump;
+        pda_account.owner = ctx.accounts.owner.key();
+        pda_account.bump = ctx.bumps.pda_account;
         Ok(())
     }
 
-    pub fn create_global_state(ctx: Context<CreateGlobalState>, bump: u8) -> Result<()> {
+    pub fn create_global_state(ctx: Context<CreateGlobalState>) -> Result<()> {
         let global_state = &mut ctx.accounts.global_state;
         global_state.admin = ADMIN;
-        global_state.bump = bump;
+        global_state.bump = ctx.bumps.global_state;
         global_state.operators.push(ADMIN);
         Ok(())
     }
@@ -244,12 +244,15 @@ pub struct Initialize {}
 #[derive(Accounts)]
 pub struct CreatePDA<'info> {
     #[account(mut)]
-    pub user: Signer<'info>,
+    pub payer: Signer<'info>,
+    /// CHECK
+    #[account()]
+    pub owner: AccountInfo<'info>,
     #[account(
         init,
-        payer = user,
+        payer = payer,
         space = 8 + 64, // 8 bytes for discriminator, 32 bytes for Pubkey
-        seeds = [PDA_SEED, user.key().as_ref()],
+        seeds = [PDA_SEED, owner.key().as_ref()],
         bump,
     )]
     pub pda_account: Account<'info, PDAAccount>,
@@ -259,10 +262,10 @@ pub struct CreatePDA<'info> {
 #[derive(Accounts)]
 pub struct CreateGlobalState<'info> {
     #[account(mut)]
-    pub user: Signer<'info>,
+    pub payer: Signer<'info>,
     #[account(
         init,
-        payer = user,
+        payer = payer,
         space = 8 + 64 + 160, // 8 bytes for discriminator, 32 bytes for Pubkey, 160 bytes for operators
         seeds = [PDA_GLOBAL_STATE_SEED],
         bump,
