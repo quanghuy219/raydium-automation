@@ -8,34 +8,37 @@ declare_id!("6tgjvHkFUUUbbacEWg225H6AazxoSTso8ix9vkXFScTU");
 
 pub const PDA_SEED: &[u8] = b"userPdaVault";
 pub const PDA_GLOBAL_STATE_SEED: &[u8] = b"globalState";
-pub const ADMIN: Pubkey = pubkey!("BjrVZbbgTuaW9NDegdQg7zN4RK5wHEMNpYhtRRayHtpH");
+pub const DISCRIMINATOR_SIZE: usize = 8;
 
 #[program]
 pub mod raydium_automation {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        msg!("Greetings from: {:?}", ctx.program_id);
-        Ok(())
-    }
-
-    pub fn create_pda(ctx: Context<CreatePDA>) -> Result<()> {
+    pub fn initialize_user_pda(ctx: Context<CreateUserPDA>) -> Result<()> {
         let pda_account = &mut ctx.accounts.pda_account;
         pda_account.owner = ctx.accounts.owner.key();
         pda_account.bump = ctx.bumps.pda_account;
         Ok(())
     }
 
-    pub fn create_global_state(ctx: Context<CreateGlobalState>) -> Result<()> {
+    pub fn initialize_global_state(ctx: Context<InitializeGlobalState>) -> Result<()> {
         let global_state = &mut ctx.accounts.global_state;
-        global_state.admin = ADMIN;
+        let admin = ctx.accounts.admin.key();
+        global_state.admin = admin;
         global_state.bump = ctx.bumps.global_state;
-        global_state.operators.push(ADMIN);
+        global_state.operators.push(admin);
         Ok(())
     }
 
-    pub fn modify_operator(ctx: Context<AddOperatorGlobalState>, operator: Pubkey, add: bool) -> Result<()> {
+    pub fn update_admin(ctx: Context<UpdateAdmin>) -> Result<()> {
         let global_state = &mut ctx.accounts.global_state;
+        global_state.admin = ctx.accounts.new_admin.key();
+        Ok(())
+    }
+
+    pub fn update_operator(ctx: Context<UpdateOperator>, add: bool) -> Result<()> {
+        let global_state = &mut ctx.accounts.global_state;
+        let operator = ctx.accounts.operator.key();
         if add {
             global_state.operators.push(operator);
         } else {
@@ -45,136 +48,79 @@ pub mod raydium_automation {
     }
 
     pub fn transfer_lamports(ctx: Context<TransferLamports>, amount: u64) -> Result<()> {
-        // PDA signer seeds
         ctx.accounts.pda_account.sub_lamports(amount)?;
         ctx.accounts.to.add_lamports(amount)?;
         Ok(())
     }
 
-    pub fn transfer_with_operator(ctx: Context<TransferWithOperator>, amount: u64) -> Result<()> {
-        // PDA signer seeds
+    pub fn transfer_by_operator(ctx: Context<TransferByOperator>, amount: u64) -> Result<()> {
         let user = ctx.accounts.user.key();
         let signer_seeds: &[&[&[u8]]] =
             &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
 
-        let source = &ctx.accounts.from_ata;
-        let destination = &ctx.accounts.to_ata;
-        let token_program = &ctx.accounts.token_program;
-        let authority = &ctx.accounts.pda_account;
-        let program_id = token_program.to_account_info();
-        let mint = &ctx.accounts.mint;
-
-        let cpi_context = CpiContext::new(
-            program_id,
-            TransferChecked {
-                from: source.to_account_info(),
-                mint: mint.to_account_info(),
-                to: destination.to_account_info(),
-                authority: authority.to_account_info(),
-            },
-        )
-        .with_signer(signer_seeds);
-
-        transfer_checked(cpi_context, amount, mint.decimals)?;
-        Ok(())
-    }
-
-    pub fn transfer_spl(ctx: Context<TransferSpl>, amount: u64) -> Result<()> {
-        // PDA signer seeds
-        let user = ctx.accounts.user.key();
-        let signer_seeds: &[&[&[u8]]] =
-            &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
-
-        let source = &ctx.accounts.from_ata;
-        let destination = &ctx.accounts.to_ata;
-        let token_program = &ctx.accounts.token_program;
-        let authority = &ctx.accounts.pda_account;
-        let program_id = token_program.to_account_info();
-        let mint = &ctx.accounts.mint;
-
-        let cpi_context = CpiContext::new(
-            program_id,
-            TransferChecked {
-                from: source.to_account_info(),
-                mint: mint.to_account_info(),
-                to: destination.to_account_info(),
-                authority: authority.to_account_info(),
-            },
-        )
-        .with_signer(signer_seeds);
-
-        transfer_checked(cpi_context, amount, mint.decimals)?;
-        Ok(())
-    }
-
-    pub fn withdraw_token(ctx: Context<WithdrawToken>) -> Result<()> {
-        // PDA signer seeds
-        let user = ctx.accounts.user.key();
-        let signer_seeds: &[&[&[u8]]] = &[&[
-            PDA_SEED,
-            user.as_ref(),
-            &[ctx.accounts.pda_account.bump],
-        ]];
-
+        let source = &ctx.accounts.from_token_account;
         let destination = &ctx.accounts.to_token_account;
+        let authority = &ctx.accounts.pda_account;
+        let token_program = ctx.accounts.token_program.to_account_info();
+        let mint = &ctx.accounts.mint;
+
+        let cpi_context = CpiContext::new(
+            token_program,
+            TransferChecked {
+                from: source.to_account_info(),
+                mint: mint.to_account_info(),
+                to: destination.to_account_info(),
+                authority: authority.to_account_info(),
+            },
+        )
+        .with_signer(signer_seeds);
+
+        transfer_checked(cpi_context, amount, mint.decimals)?;
+        Ok(())
+    }
+
+    pub fn transfer_token(ctx: Context<TransferToken>, amount: u64) -> Result<()> {
+        let user = ctx.accounts.user.key();
+        // PDA signer seeds
+        let signer_seeds: &[&[&[u8]]] =
+            &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
+
         let source = &ctx.accounts.from_token_account;
+        let destination = &ctx.accounts.to_token_account;
         let token_program = &ctx.accounts.token_program;
         let authority = &ctx.accounts.pda_account;
         let program_id = token_program.to_account_info();
-        let amount = ctx.accounts.from_token_account.amount;
         let mint = &ctx.accounts.mint;
 
         let cpi_context = CpiContext::new(
             program_id,
             TransferChecked {
                 from: source.to_account_info(),
+                mint: mint.to_account_info(),
                 to: destination.to_account_info(),
                 authority: authority.to_account_info(),
-                mint: mint.to_account_info(),
             },
         )
         .with_signer(signer_seeds);
 
         transfer_checked(cpi_context, amount, mint.decimals)?;
-
         Ok(())
     }
 
-    pub fn withdraw_token_and_close(ctx: Context<WithdrawTokenAndClose>) -> Result<()> {
-        // PDA signer seeds
+    pub fn close_token_account(ctx: Context<CloseTokenAccount>) -> Result<()> {
         let user = ctx.accounts.user.key();
-        let signer_seeds: &[&[&[u8]]] = &[&[
-            PDA_SEED,
-            user.as_ref(),
-            &[ctx.accounts.pda_account.bump],
-        ]];
+        let signer_seeds: &[&[&[u8]]] =
+            &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
 
-        let to_token_account = &ctx.accounts.to_token_account;
+        let token_account = ctx.accounts.token_account.to_account_info();
         let destination = &ctx.accounts.destination;
-        let source = &ctx.accounts.from_token_account;
-        let token_program = &ctx.accounts.token_program;
         let authority = &ctx.accounts.pda_account;
-        let program_id = token_program.to_account_info();
-        let amount = ctx.accounts.from_token_account.amount;
-        let mint = &ctx.accounts.mint;
-
-        let cpi_context = CpiContext::new(
-            program_id.clone(),
-            TransferChecked {
-                from: source.to_account_info(),
-                to: to_token_account.to_account_info(),
-                authority: authority.to_account_info(),
-                mint: mint.to_account_info(),
-            },
-        )
-        .with_signer(signer_seeds);
-
-        transfer_checked(cpi_context, amount, mint.decimals)?;
+        let program = ctx.accounts.token_program.to_account_info();
 
         let cpi_context_close_account = CpiContext::new(
-            program_id.clone(),
+            program,
             CloseAccount {
-                account: source.to_account_info(),
+                account: token_account,
                 destination: destination.to_account_info(),
                 authority: authority.to_account_info(),
             },
@@ -213,7 +159,7 @@ pub mod raydium_automation {
         Ok(())
     }
 
-    pub fn revoke_approval(ctx: Context<RevokeDelegateToken>) -> Result<()> {
+    pub fn revoke_approval(ctx: Context<RevokeApproval>) -> Result<()> {
         let user = ctx.accounts.user.key();
         let signer_seeds: &[&[&[u8]]] =
             &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
@@ -242,7 +188,7 @@ pub mod raydium_automation {
 pub struct Initialize {}
 
 #[derive(Accounts)]
-pub struct CreatePDA<'info> {
+pub struct CreateUserPDA<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     /// CHECK
@@ -251,55 +197,79 @@ pub struct CreatePDA<'info> {
     #[account(
         init,
         payer = payer,
-        space = 8 + 64, // 8 bytes for discriminator, 32 bytes for Pubkey
+        space = DISCRIMINATOR_SIZE + UserPdaVaultAccount::INIT_SPACE,
         seeds = [PDA_SEED, owner.key().as_ref()],
         bump,
     )]
-    pub pda_account: Account<'info, PDAAccount>,
+    pub pda_account: Account<'info, UserPdaVaultAccount>,
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
-pub struct CreateGlobalState<'info> {
+pub struct InitializeGlobalState<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(
         init,
         payer = payer,
-        space = 8 + 64 + 160, // 8 bytes for discriminator, 32 bytes for Pubkey, 160 bytes for operators
+        space = DISCRIMINATOR_SIZE + GlobalState::INIT_SPACE,
         seeds = [PDA_GLOBAL_STATE_SEED],
         bump,
     )]
     pub global_state: Account<'info, GlobalState>,
+    /// CHECK
+    #[account()]
+    pub admin: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
-pub struct AddOperatorGlobalState<'info> {
+pub struct UpdateAdmin<'info> {
     #[account(mut)]
-    pub user: Signer<'info>,
+    pub admin: Signer<'info>,
     #[account(
         mut,
         seeds = [PDA_GLOBAL_STATE_SEED],
         bump = global_state.bump,
-        constraint = global_state.admin == user.key(),
+        constraint = global_state.admin == admin.key(),
     )]
     pub global_state: Account<'info, GlobalState>,
+    /// CHECK
+    #[account()]
+    pub new_admin: AccountInfo<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateOperator<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [PDA_GLOBAL_STATE_SEED],
+        bump = global_state.bump,
+        constraint = global_state.admin == admin.key(),
+    )]
+    pub global_state: Account<'info, GlobalState>,
+    /// CHECK
+    #[account()]
+    pub operator: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
 }
 
 #[account]
-#[derive(Debug)]
-pub struct PDAAccount {
+#[derive(InitSpace)]
+pub struct UserPdaVaultAccount {
     pub owner: Pubkey,
     bump: u8,
 }
 
 #[account]
-#[derive(Debug)]
+#[derive(InitSpace)]
 pub struct GlobalState {
     pub admin: Pubkey,
     bump: u8,
+    #[max_len(5)]
     pub operators: Vec<Pubkey>,
 }
 
@@ -312,7 +282,7 @@ pub struct TransferLamports<'info> {
         seeds = [PDA_SEED, user.key().as_ref()],
         bump = pda_account.bump,
     )]
-    pub pda_account: Account<'info, PDAAccount>,
+    pub pda_account: Account<'info, UserPdaVaultAccount>,
     /// CHECK: safe
     #[account(mut)]
     pub to: AccountInfo<'info>,
@@ -320,7 +290,7 @@ pub struct TransferLamports<'info> {
 }
 
 #[derive(Accounts)]
-pub struct TransferSpl<'info> {
+pub struct TransferToken<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
     #[account(
@@ -328,11 +298,11 @@ pub struct TransferSpl<'info> {
         seeds = [PDA_SEED, user.key().as_ref()],
         bump = pda_account.bump,
     )]
-    pub pda_account: Account<'info, PDAAccount>,
+    pub pda_account: Account<'info, UserPdaVaultAccount>,
     #[account(mut)]
-    pub from_ata: InterfaceAccount<'info, TokenAccount>,
+    pub from_token_account: InterfaceAccount<'info, TokenAccount>,
     #[account(mut)]
-    pub to_ata: InterfaceAccount<'info, TokenAccount>,
+    pub to_token_account: InterfaceAccount<'info, TokenAccount>,
     #[account()]
     pub mint: InterfaceAccount<'info, Mint>,
     #[account()]
@@ -340,7 +310,7 @@ pub struct TransferSpl<'info> {
 }
 
 #[derive(Accounts)]
-pub struct TransferWithOperator<'info> {
+pub struct TransferByOperator<'info> {
     #[account(mut)]
     pub operator: Signer<'info>,
     /// CHECK: safe
@@ -351,7 +321,7 @@ pub struct TransferWithOperator<'info> {
         seeds = [PDA_SEED, user.key().as_ref()],
         bump = pda_account.bump,
     )]
-    pub pda_account: Account<'info, PDAAccount>,
+    pub pda_account: Account<'info, UserPdaVaultAccount>,
     #[account(
         seeds = [PDA_GLOBAL_STATE_SEED],
         bump = global_state.bump,
@@ -359,26 +329,6 @@ pub struct TransferWithOperator<'info> {
     )]
     pub global_state: Account<'info, GlobalState>,
     #[account(mut)]
-    pub from_ata: InterfaceAccount<'info, TokenAccount>,
-    #[account(mut)]
-    pub to_ata: InterfaceAccount<'info, TokenAccount>,
-    #[account()]
-    pub mint: InterfaceAccount<'info, Mint>,
-    #[account()]
-    pub token_program: Interface<'info, TokenInterface>,
-}
-
-#[derive(Accounts)]
-pub struct WithdrawToken<'info> {
-    #[account(mut)]
-    pub user: Signer<'info>,
-    #[account(
-        mut,
-        seeds = [PDA_SEED, user.key().as_ref()],
-        bump = pda_account.bump,
-    )]
-    pub pda_account: Account<'info, PDAAccount>,
-    #[account(mut)]
     pub from_token_account: InterfaceAccount<'info, TokenAccount>,
     #[account(mut)]
     pub to_token_account: InterfaceAccount<'info, TokenAccount>,
@@ -389,7 +339,7 @@ pub struct WithdrawToken<'info> {
 }
 
 #[derive(Accounts)]
-pub struct WithdrawTokenAndClose<'info> {
+pub struct CloseTokenAccount<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
     #[account(
@@ -397,13 +347,11 @@ pub struct WithdrawTokenAndClose<'info> {
         seeds = [PDA_SEED, user.key().as_ref()],
         bump = pda_account.bump,
     )]
-    pub pda_account: Account<'info, PDAAccount>,
+    pub pda_account: Account<'info, UserPdaVaultAccount>,
     #[account(mut)]
-    pub from_token_account: InterfaceAccount<'info, TokenAccount>,
-    #[account(mut)]
-    pub to_token_account: InterfaceAccount<'info, TokenAccount>,
-    /// CHECK: safe
-    #[account(mut)]
+    pub token_account: InterfaceAccount<'info, TokenAccount>,
+    /// CHECK
+    #[account()]
     pub destination: AccountInfo<'info>,
     #[account()]
     pub mint: InterfaceAccount<'info, Mint>,
@@ -420,7 +368,7 @@ pub struct ApproveToken<'info> {
         seeds = [PDA_SEED, user.key().as_ref()],
         bump = pda_account.bump,
     )]
-    pub pda_account: Account<'info, PDAAccount>,
+    pub pda_account: Account<'info, UserPdaVaultAccount>,
     #[account(mut)]
     pub token_account: InterfaceAccount<'info, TokenAccount>,
     /// CHECK
@@ -431,7 +379,7 @@ pub struct ApproveToken<'info> {
 }
 
 #[derive(Accounts)]
-pub struct RevokeDelegateToken<'info> {
+pub struct RevokeApproval<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
     #[account(
@@ -439,7 +387,7 @@ pub struct RevokeDelegateToken<'info> {
         seeds = [PDA_SEED, user.key().as_ref()],
         bump = pda_account.bump,
     )]
-    pub pda_account: Account<'info, PDAAccount>,
+    pub pda_account: Account<'info, UserPdaVaultAccount>,
     #[account(mut)]
     pub token_account: InterfaceAccount<'info, TokenAccount>,
     /// CHECK
@@ -447,10 +395,4 @@ pub struct RevokeDelegateToken<'info> {
     pub delegate: AccountInfo<'info>,
     #[account()]
     pub token_program: Interface<'info, TokenInterface>,
-}
-
-#[error_code]
-pub enum CustomError {
-    #[msg("Invalid PDA detected.")]
-    InvalidPDA,
 }
