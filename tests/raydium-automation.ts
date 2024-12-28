@@ -443,4 +443,56 @@ describe("raydium-automation", () => {
     const simulateResult = await provider.connection.simulateTransaction(signedTx);
     expect(simulateResult.value.err).to.be.null;
   });
+
+  it("should withdraw and close token account by operator successfully", async () => {
+    // Derive the PDA address
+    const [pda, bump] = PublicKey.findProgramAddressSync(
+      [Buffer.from("userPdaVault"), user.publicKey.toBuffer()],
+      program.programId
+    );
+
+    const tokenAccount = getAssociatedTokenAddressSync(tokenMint.publicKey, pda, true, TOKEN_2022_PROGRAM_ID);
+    const destATA = getAssociatedTokenAddressSync(tokenMint.publicKey, payer.publicKey, false, TOKEN_2022_PROGRAM_ID);
+    const createDestAta = createAssociatedTokenAccountIdempotentInstruction(payer.publicKey, destATA, payer.publicKey, tokenMint.publicKey, TOKEN_2022_PROGRAM_ID);
+
+    const withdrawIx = await program.methods
+    .withdrawToken()
+    .accounts({
+      user: user.publicKey,
+      userVault: pda,
+      fromTokenAccount: tokenAccount,
+      toTokenAccount: destATA,
+      mint: tokenMint.publicKey,
+      tokenProgram: TOKEN_2022_PROGRAM_ID
+    })
+    .instruction();
+
+    const closeIx = await program.methods
+      .closeTokenAccount()
+      .accounts({
+        user: user.publicKey,
+        userVault: pda,
+        tokenAccount: tokenAccount,
+        destination: payer.publicKey,
+        tokenProgram: TOKEN_2022_PROGRAM_ID
+      })
+      .instruction();
+
+    const tx = await buildTransaction({
+      connection: provider.connection,
+      payer: payer.publicKey,
+      instructions: [createDestAta, withdrawIx, closeIx],
+      signers: [user],
+    })
+
+    const signedTx = await payer.signTransaction(tx);
+    const simulateResult = await provider.connection.simulateTransaction(signedTx);
+    expect(simulateResult.value.err).to.be.null;
+
+    const sig = await provider.connection.sendTransaction(signedTx);
+    console.log("withdraw and close token account signature", sig);
+    await wait(2000);
+    const accountInfo = await provider.connection.getAccountInfo(tokenAccount);
+    expect(accountInfo).to.be.null;
+  })
 });

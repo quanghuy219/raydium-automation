@@ -116,6 +116,24 @@ pub mod raydium_automation {
         )
     }
 
+    pub fn withdraw_token(ctx: Context<TransferToken>) -> Result<()> {
+        let user = ctx.accounts.user.key();
+        let signer_seeds: &[&[&[u8]]] =
+            &[&[PDA_VAULT_SEED, user.as_ref(), &[ctx.accounts.user_vault.bump]]];
+
+        let amount = ctx.accounts.from_token_account.amount;
+
+        token::transfer(
+            &ctx.accounts.from_token_account,
+            &ctx.accounts.to_token_account,
+            &ctx.accounts.user_vault.to_account_info(),
+            &ctx.accounts.mint,
+            ctx.accounts.token_program.clone(),
+            signer_seeds,
+            amount,
+        )
+    }
+
     pub fn close_token_account(ctx: Context<CloseTokenAccount>) -> Result<()> {
         let user = ctx.accounts.user.key();
         let signer_seeds: &[&[&[u8]]] =
@@ -340,8 +358,6 @@ pub struct CloseTokenAccountByOperator<'info> {
     #[account()]
     pub destination: AccountInfo<'info>,
     #[account()]
-    pub mint: InterfaceAccount<'info, Mint>,
-    #[account()]
     pub token_program: Interface<'info, TokenInterface>,
 }
 
@@ -360,8 +376,6 @@ pub struct CloseTokenAccount<'info> {
     /// CHECK
     #[account()]
     pub destination: AccountInfo<'info>,
-    #[account()]
-    pub mint: InterfaceAccount<'info, Mint>,
     #[account()]
     pub token_program: Interface<'info, TokenInterface>,
 }
