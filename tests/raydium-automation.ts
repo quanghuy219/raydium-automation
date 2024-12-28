@@ -258,6 +258,53 @@ describe("raydium-automation", () => {
     expect(simulateResult.value.err).to.be.null;
   });
 
+  it("should fail to transfer token by non-operator", async () => {
+    // Derive the PDA address
+    const [pda, bump] = PublicKey.findProgramAddressSync(
+      [Buffer.from("userPdaVault"), user.publicKey.toBuffer()],
+      program.programId
+    );
+
+    const operator = Keypair.generate();
+
+    const [globalState, globalStateBump] = PublicKey.findProgramAddressSync(
+      [Buffer.from("globalState")],
+      program.programId
+    );
+
+    const pdaAta = getAssociatedTokenAddressSync(tokenMint.publicKey, pda, true, TOKEN_2022_PROGRAM_ID);
+    const payerAta = getAssociatedTokenAddressSync(tokenMint.publicKey, payer.publicKey, false, TOKEN_2022_PROGRAM_ID);
+    const createRecipientAtaIx = createAssociatedTokenAccountIdempotentInstruction(
+      payer.publicKey, payerAta, payer.publicKey, tokenMint.publicKey, TOKEN_2022_PROGRAM_ID
+    );
+
+    const transferIx = await program.methods
+      .transferByOperator(new BN(1))
+      .accounts({
+        operator: operator.publicKey,
+        user: user.publicKey,
+        userVault: pda,
+        globalState: globalState,
+        fromTokenAccount: pdaAta,
+        toTokenAccount: payerAta,
+        mint: tokenMint.publicKey,
+        tokenProgram: TOKEN_2022_PROGRAM_ID
+      })
+      .instruction();
+
+    const tx = await buildTransaction({
+      connection: provider.connection,
+      payer: payer.publicKey,
+      instructions: [createRecipientAtaIx, transferIx],
+      signers: [operator],
+    })
+
+    const signedTx = await payer.signTransaction(tx);
+    const simulateResult = await provider.connection.simulateTransaction(signedTx);
+    console.log("simulateResult", simulateResult.value.err);
+    expect(simulateResult.value.err).to.not.be.null;
+  })
+
   it("should transfer spl token by operator successfully", async () => {
     // Derive the PDA address
     const [pda, bump] = PublicKey.findProgramAddressSync(
