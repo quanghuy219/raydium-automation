@@ -5,7 +5,7 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 declare_id!("6tgjvHkFUUUbbacEWg225H6AazxoSTso8ix9vkXFScTU");
 
-pub const PDA_SEED: &[u8] = b"userPdaVault";
+pub const PDA_VAULT_SEED: &[u8] = b"userPdaVault";
 pub const PDA_GLOBAL_STATE_SEED: &[u8] = b"globalState";
 pub const DISCRIMINATOR_SIZE: usize = 8;
 
@@ -14,9 +14,9 @@ pub mod raydium_automation {
     use super::*;
 
     pub fn initialize_user_pda(ctx: Context<CreateUserPDA>) -> Result<()> {
-        let pda_account = &mut ctx.accounts.pda_account;
-        pda_account.owner = ctx.accounts.owner.key();
-        pda_account.bump = ctx.bumps.pda_account;
+        let user_vault = &mut ctx.accounts.user_vault;
+        user_vault.owner = ctx.accounts.owner.key();
+        user_vault.bump = ctx.bumps.user_vault;
         Ok(())
     }
 
@@ -47,7 +47,7 @@ pub mod raydium_automation {
     }
 
     pub fn transfer_lamports(ctx: Context<TransferLamports>, amount: u64) -> Result<()> {
-        ctx.accounts.pda_account.sub_lamports(amount)?;
+        ctx.accounts.user_vault.sub_lamports(amount)?;
         ctx.accounts.to.add_lamports(amount)?;
         Ok(())
     }
@@ -55,12 +55,12 @@ pub mod raydium_automation {
     pub fn transfer_by_operator(ctx: Context<TransferByOperator>, amount: u64) -> Result<()> {
         let user = ctx.accounts.user.key();
         let signer_seeds: &[&[&[u8]]] =
-            &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
+            &[&[PDA_VAULT_SEED, user.as_ref(), &[ctx.accounts.user_vault.bump]]];
 
         token::transfer(
             &mut ctx.accounts.from_token_account,
             &mut ctx.accounts.to_token_account,
-            &ctx.accounts.pda_account.to_account_info(),
+            &ctx.accounts.user_vault.to_account_info(),
             &ctx.accounts.mint,
             ctx.accounts.token_program.clone(),
             signer_seeds,
@@ -71,14 +71,14 @@ pub mod raydium_automation {
     pub fn withdraw_token_by_operator(ctx: Context<TransferByOperator>) -> Result<()> {
         let user = ctx.accounts.user.key();
         let signer_seeds: &[&[&[u8]]] =
-            &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
+            &[&[PDA_VAULT_SEED, user.as_ref(), &[ctx.accounts.user_vault.bump]]];
 
         let amount = ctx.accounts.from_token_account.amount;
 
         token::transfer(
             &mut ctx.accounts.from_token_account,
             &mut ctx.accounts.to_token_account,
-            &ctx.accounts.pda_account.to_account_info(),
+            &ctx.accounts.user_vault.to_account_info(),
             &ctx.accounts.mint,
             ctx.accounts.token_program.clone(),
             signer_seeds,
@@ -89,12 +89,12 @@ pub mod raydium_automation {
     pub fn close_account_by_operator(ctx: Context<CloseTokenAccountByOperator>) -> Result<()> {
         let user = ctx.accounts.user.key();
         let signer_seeds: &[&[&[u8]]] =
-            &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
+            &[&[PDA_VAULT_SEED, user.as_ref(), &[ctx.accounts.user_vault.bump]]];
 
         token::close_token_account(
             &ctx.accounts.token_account,
             &ctx.accounts.destination,
-            &ctx.accounts.pda_account.to_account_info(),
+            &ctx.accounts.user_vault.to_account_info(),
             ctx.accounts.token_program.clone(),
             signer_seeds,
         )
@@ -103,12 +103,12 @@ pub mod raydium_automation {
     pub fn transfer_token(ctx: Context<TransferToken>, amount: u64) -> Result<()> {
         let user = ctx.accounts.user.key();
         let signer_seeds: &[&[&[u8]]] =
-            &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
+            &[&[PDA_VAULT_SEED, user.as_ref(), &[ctx.accounts.user_vault.bump]]];
 
         token::transfer(
             &ctx.accounts.from_token_account,
             &ctx.accounts.to_token_account,
-            &ctx.accounts.pda_account.to_account_info(),
+            &ctx.accounts.user_vault.to_account_info(),
             &ctx.accounts.mint,
             ctx.accounts.token_program.clone(),
             signer_seeds,
@@ -119,12 +119,12 @@ pub mod raydium_automation {
     pub fn close_token_account(ctx: Context<CloseTokenAccount>) -> Result<()> {
         let user = ctx.accounts.user.key();
         let signer_seeds: &[&[&[u8]]] =
-            &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
+            &[&[PDA_VAULT_SEED, user.as_ref(), &[ctx.accounts.user_vault.bump]]];
 
         token::close_token_account(
             &ctx.accounts.token_account,
             &ctx.accounts.destination,
-            &ctx.accounts.pda_account.to_account_info(),
+            &ctx.accounts.user_vault.to_account_info(),
             ctx.accounts.token_program.clone(),
             signer_seeds,
         )
@@ -134,12 +134,12 @@ pub mod raydium_automation {
         // PDA signer seeds
         let user = ctx.accounts.user.key();
         let signer_seeds: &[&[&[u8]]] =
-            &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
+            &[&[PDA_VAULT_SEED, user.as_ref(), &[ctx.accounts.user_vault.bump]]];
 
         token::approve_token(
             &ctx.accounts.token_account,
             &ctx.accounts.delegate,
-            &ctx.accounts.pda_account.to_account_info(),
+            &ctx.accounts.user_vault.to_account_info(),
             ctx.accounts.token_program.clone(),
             signer_seeds,
             amount,
@@ -150,7 +150,7 @@ pub mod raydium_automation {
         // PDA signer seeds
         let user = ctx.accounts.user.key();
         let signer_seeds: &[&[&[u8]]] =
-            &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
+            &[&[PDA_VAULT_SEED, user.as_ref(), &[ctx.accounts.user_vault.bump]]];
 
         token::revoke_approval(
             &ctx.accounts.token_account,
@@ -175,10 +175,10 @@ pub struct CreateUserPDA<'info> {
         init,
         payer = payer,
         space = DISCRIMINATOR_SIZE + UserPdaVaultAccount::INIT_SPACE,
-        seeds = [PDA_SEED, owner.key().as_ref()],
+        seeds = [PDA_VAULT_SEED, owner.key().as_ref()],
         bump,
     )]
-    pub pda_account: Account<'info, UserPdaVaultAccount>,
+    pub user_vault: Account<'info, UserPdaVaultAccount>,
     pub system_program: Program<'info, System>,
 }
 
@@ -256,10 +256,10 @@ pub struct TransferLamports<'info> {
     pub user: Signer<'info>,
     #[account(
         mut,
-        seeds = [PDA_SEED, user.key().as_ref()],
-        bump = pda_account.bump,
+        seeds = [PDA_VAULT_SEED, user.key().as_ref()],
+        bump = user_vault.bump,
     )]
-    pub pda_account: Account<'info, UserPdaVaultAccount>,
+    pub user_vault: Account<'info, UserPdaVaultAccount>,
     /// CHECK: safe
     #[account(mut)]
     pub to: AccountInfo<'info>,
@@ -272,10 +272,10 @@ pub struct TransferToken<'info> {
     pub user: Signer<'info>,
     #[account(
         mut,
-        seeds = [PDA_SEED, user.key().as_ref()],
-        bump = pda_account.bump,
+        seeds = [PDA_VAULT_SEED, user.key().as_ref()],
+        bump = user_vault.bump,
     )]
-    pub pda_account: Account<'info, UserPdaVaultAccount>,
+    pub user_vault: Account<'info, UserPdaVaultAccount>,
     #[account(mut)]
     pub from_token_account: InterfaceAccount<'info, TokenAccount>,
     #[account(mut)]
@@ -295,10 +295,10 @@ pub struct TransferByOperator<'info> {
     pub user: AccountInfo<'info>,
     #[account(
         mut,
-        seeds = [PDA_SEED, user.key().as_ref()],
-        bump = pda_account.bump,
+        seeds = [PDA_VAULT_SEED, user.key().as_ref()],
+        bump = user_vault.bump,
     )]
-    pub pda_account: Account<'info, UserPdaVaultAccount>,
+    pub user_vault: Account<'info, UserPdaVaultAccount>,
     #[account(
         seeds = [PDA_GLOBAL_STATE_SEED],
         bump = global_state.bump,
@@ -324,10 +324,10 @@ pub struct CloseTokenAccountByOperator<'info> {
     pub user: AccountInfo<'info>,
     #[account(
         mut,
-        seeds = [PDA_SEED, user.key().as_ref()],
-        bump = pda_account.bump,
+        seeds = [PDA_VAULT_SEED, user.key().as_ref()],
+        bump = user_vault.bump,
     )]
-    pub pda_account: Account<'info, UserPdaVaultAccount>,
+    pub user_vault: Account<'info, UserPdaVaultAccount>,
     #[account(
         seeds = [PDA_GLOBAL_STATE_SEED],
         bump = global_state.bump,
@@ -351,10 +351,10 @@ pub struct CloseTokenAccount<'info> {
     pub user: Signer<'info>,
     #[account(
         mut,
-        seeds = [PDA_SEED, user.key().as_ref()],
-        bump = pda_account.bump,
+        seeds = [PDA_VAULT_SEED, user.key().as_ref()],
+        bump = user_vault.bump,
     )]
-    pub pda_account: Account<'info, UserPdaVaultAccount>,
+    pub user_vault: Account<'info, UserPdaVaultAccount>,
     #[account(mut)]
     pub token_account: InterfaceAccount<'info, TokenAccount>,
     /// CHECK
@@ -372,10 +372,10 @@ pub struct ApproveToken<'info> {
     pub user: Signer<'info>,
     #[account(
         mut,
-        seeds = [PDA_SEED, user.key().as_ref()],
-        bump = pda_account.bump,
+        seeds = [PDA_VAULT_SEED, user.key().as_ref()],
+        bump = user_vault.bump,
     )]
-    pub pda_account: Account<'info, UserPdaVaultAccount>,
+    pub user_vault: Account<'info, UserPdaVaultAccount>,
     #[account(mut)]
     pub token_account: InterfaceAccount<'info, TokenAccount>,
     /// CHECK
@@ -391,10 +391,10 @@ pub struct RevokeApproval<'info> {
     pub user: Signer<'info>,
     #[account(
         mut,
-        seeds = [PDA_SEED, user.key().as_ref()],
-        bump = pda_account.bump,
+        seeds = [PDA_VAULT_SEED, user.key().as_ref()],
+        bump = user_vault.bump,
     )]
-    pub pda_account: Account<'info, UserPdaVaultAccount>,
+    pub user_vault: Account<'info, UserPdaVaultAccount>,
     #[account(mut)]
     pub token_account: InterfaceAccount<'info, TokenAccount>,
     /// CHECK
