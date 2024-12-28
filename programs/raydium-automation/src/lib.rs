@@ -1,8 +1,7 @@
+pub mod token;
+
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::{
-    approve, close_account, revoke, transfer_checked, Approve, CloseAccount, Mint, Revoke,
-    TokenAccount, TokenInterface, TransferChecked,
-};
+use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 declare_id!("6tgjvHkFUUUbbacEWg225H6AazxoSTso8ix9vkXFScTU");
 
@@ -58,53 +57,63 @@ pub mod raydium_automation {
         let signer_seeds: &[&[&[u8]]] =
             &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
 
-        let source = &ctx.accounts.from_token_account;
-        let destination = &ctx.accounts.to_token_account;
-        let authority = &ctx.accounts.pda_account;
-        let token_program = ctx.accounts.token_program.to_account_info();
-        let mint = &ctx.accounts.mint;
-
-        let cpi_context = CpiContext::new(
-            token_program,
-            TransferChecked {
-                from: source.to_account_info(),
-                mint: mint.to_account_info(),
-                to: destination.to_account_info(),
-                authority: authority.to_account_info(),
-            },
+        token::transfer(
+            &mut ctx.accounts.from_token_account,
+            &mut ctx.accounts.to_token_account,
+            &ctx.accounts.pda_account.to_account_info(),
+            &ctx.accounts.mint,
+            ctx.accounts.token_program.clone(),
+            signer_seeds,
+            amount,
         )
-        .with_signer(signer_seeds);
+    }
 
-        transfer_checked(cpi_context, amount, mint.decimals)?;
-        Ok(())
+    pub fn withdraw_token_by_operator(ctx: Context<TransferByOperator>) -> Result<()> {
+        let user = ctx.accounts.user.key();
+        let signer_seeds: &[&[&[u8]]] =
+            &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
+
+        let amount = ctx.accounts.from_token_account.amount;
+
+        token::transfer(
+            &mut ctx.accounts.from_token_account,
+            &mut ctx.accounts.to_token_account,
+            &ctx.accounts.pda_account.to_account_info(),
+            &ctx.accounts.mint,
+            ctx.accounts.token_program.clone(),
+            signer_seeds,
+            amount,
+        )
+    }
+
+    pub fn close_account_by_operator(ctx: Context<CloseTokenAccountByOperator>) -> Result<()> {
+        let user = ctx.accounts.user.key();
+        let signer_seeds: &[&[&[u8]]] =
+            &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
+
+        token::close_token_account(
+            &ctx.accounts.token_account,
+            &ctx.accounts.destination,
+            &ctx.accounts.pda_account.to_account_info(),
+            ctx.accounts.token_program.clone(),
+            signer_seeds,
+        )
     }
 
     pub fn transfer_token(ctx: Context<TransferToken>, amount: u64) -> Result<()> {
         let user = ctx.accounts.user.key();
-        // PDA signer seeds
         let signer_seeds: &[&[&[u8]]] =
             &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
 
-        let source = &ctx.accounts.from_token_account;
-        let destination = &ctx.accounts.to_token_account;
-        let token_program = &ctx.accounts.token_program;
-        let authority = &ctx.accounts.pda_account;
-        let program_id = token_program.to_account_info();
-        let mint = &ctx.accounts.mint;
-
-        let cpi_context = CpiContext::new(
-            program_id,
-            TransferChecked {
-                from: source.to_account_info(),
-                mint: mint.to_account_info(),
-                to: destination.to_account_info(),
-                authority: authority.to_account_info(),
-            },
+        token::transfer(
+            &ctx.accounts.from_token_account,
+            &ctx.accounts.to_token_account,
+            &ctx.accounts.pda_account.to_account_info(),
+            &ctx.accounts.mint,
+            ctx.accounts.token_program.clone(),
+            signer_seeds,
+            amount,
         )
-        .with_signer(signer_seeds);
-
-        transfer_checked(cpi_context, amount, mint.decimals)?;
-        Ok(())
     }
 
     pub fn close_token_account(ctx: Context<CloseTokenAccount>) -> Result<()> {
@@ -112,24 +121,13 @@ pub mod raydium_automation {
         let signer_seeds: &[&[&[u8]]] =
             &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
 
-        let token_account = ctx.accounts.token_account.to_account_info();
-        let destination = &ctx.accounts.destination;
-        let authority = &ctx.accounts.pda_account;
-        let program = ctx.accounts.token_program.to_account_info();
-
-        let cpi_context_close_account = CpiContext::new(
-            program,
-            CloseAccount {
-                account: token_account,
-                destination: destination.to_account_info(),
-                authority: authority.to_account_info(),
-            },
+        token::close_token_account(
+            &ctx.accounts.token_account,
+            &ctx.accounts.destination,
+            &ctx.accounts.pda_account.to_account_info(),
+            ctx.accounts.token_program.clone(),
+            signer_seeds,
         )
-        .with_signer(signer_seeds);
-
-        close_account(cpi_context_close_account)?;
-
-        Ok(())
     }
 
     pub fn approve_token(ctx: Context<ApproveToken>, amount: u64) -> Result<()> {
@@ -138,49 +136,28 @@ pub mod raydium_automation {
         let signer_seeds: &[&[&[u8]]] =
             &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
 
-        let token_account = &ctx.accounts.token_account;
-        let token_program = &ctx.accounts.token_program;
-        let authority = &ctx.accounts.pda_account;
-        let program_id = token_program.to_account_info();
-        let delegate = &ctx.accounts.delegate;
-
-        let cpi_context = CpiContext::new(
-            program_id,
-            Approve {
-                to: token_account.to_account_info(),
-                authority: authority.to_account_info(),
-                delegate: delegate.to_account_info(),
-            },
+        token::approve_token(
+            &ctx.accounts.token_account,
+            &ctx.accounts.delegate,
+            &ctx.accounts.pda_account.to_account_info(),
+            ctx.accounts.token_program.clone(),
+            signer_seeds,
+            amount,
         )
-        .with_signer(signer_seeds);
-
-        approve(cpi_context, amount)?;
-
-        Ok(())
     }
 
     pub fn revoke_approval(ctx: Context<RevokeApproval>) -> Result<()> {
+        // PDA signer seeds
         let user = ctx.accounts.user.key();
         let signer_seeds: &[&[&[u8]]] =
             &[&[PDA_SEED, user.as_ref(), &[ctx.accounts.pda_account.bump]]];
 
-        let token_account = &ctx.accounts.token_account;
-        let token_program = &ctx.accounts.token_program;
-        let delegate = &ctx.accounts.delegate;
-        let program_id = token_program.to_account_info();
-
-        let cpi_context = CpiContext::new(
-            program_id,
-            Revoke {
-                source: token_account.to_account_info(),
-                authority: delegate.to_account_info(),
-            },
+        token::revoke_approval(
+            &ctx.accounts.token_account,
+            &ctx.accounts.delegate,
+            ctx.accounts.token_program.clone(),
+            signer_seeds,
         )
-        .with_signer(signer_seeds);
-
-        revoke(cpi_context)?;
-
-        Ok(())
     }
 }
 
@@ -231,7 +208,7 @@ pub struct UpdateAdmin<'info> {
         mut,
         seeds = [PDA_GLOBAL_STATE_SEED],
         bump = global_state.bump,
-        constraint = global_state.admin == admin.key(),
+        constraint = global_state.admin == admin.key() @ CustomError::Unauthorized,
     )]
     pub global_state: Account<'info, GlobalState>,
     /// CHECK
@@ -248,7 +225,7 @@ pub struct UpdateOperator<'info> {
         mut,
         seeds = [PDA_GLOBAL_STATE_SEED],
         bump = global_state.bump,
-        constraint = global_state.admin == admin.key(),
+        constraint = global_state.admin == admin.key() @ CustomError::Unauthorized,
     )]
     pub global_state: Account<'info, GlobalState>,
     /// CHECK
@@ -261,14 +238,14 @@ pub struct UpdateOperator<'info> {
 #[derive(InitSpace)]
 pub struct UserPdaVaultAccount {
     pub owner: Pubkey,
-    bump: u8,
+    pub bump: u8,
 }
 
 #[account]
 #[derive(InitSpace)]
 pub struct GlobalState {
     pub admin: Pubkey,
-    bump: u8,
+    pub bump: u8,
     #[max_len(5)]
     pub operators: Vec<Pubkey>,
 }
@@ -325,13 +302,43 @@ pub struct TransferByOperator<'info> {
     #[account(
         seeds = [PDA_GLOBAL_STATE_SEED],
         bump = global_state.bump,
-        constraint = global_state.operators.iter().any(|&x| x == operator.key()),
+        constraint = global_state.operators.iter().any(|&x| x == operator.key()) @ CustomError::Unauthorized,
     )]
     pub global_state: Account<'info, GlobalState>,
     #[account(mut)]
     pub from_token_account: InterfaceAccount<'info, TokenAccount>,
     #[account(mut)]
     pub to_token_account: InterfaceAccount<'info, TokenAccount>,
+    #[account()]
+    pub mint: InterfaceAccount<'info, Mint>,
+    #[account()]
+    pub token_program: Interface<'info, TokenInterface>,
+}
+
+#[derive(Accounts)]
+pub struct CloseTokenAccountByOperator<'info> {
+    #[account(mut)]
+    pub operator: Signer<'info>,
+    /// CHECK: safe
+    #[account()]
+    pub user: AccountInfo<'info>,
+    #[account(
+        mut,
+        seeds = [PDA_SEED, user.key().as_ref()],
+        bump = pda_account.bump,
+    )]
+    pub pda_account: Account<'info, UserPdaVaultAccount>,
+    #[account(
+        seeds = [PDA_GLOBAL_STATE_SEED],
+        bump = global_state.bump,
+        constraint = global_state.operators.iter().any(|&x| x == operator.key()) @ CustomError::Unauthorized,
+    )]
+    pub global_state: Account<'info, GlobalState>,
+    #[account(mut)]
+    pub token_account: InterfaceAccount<'info, TokenAccount>,
+    /// CHECK
+    #[account()]
+    pub destination: AccountInfo<'info>,
     #[account()]
     pub mint: InterfaceAccount<'info, Mint>,
     #[account()]
@@ -395,4 +402,10 @@ pub struct RevokeApproval<'info> {
     pub delegate: AccountInfo<'info>,
     #[account()]
     pub token_program: Interface<'info, TokenInterface>,
+}
+
+#[error_code]
+pub enum CustomError {
+    #[msg("Unauthorized error")]
+    Unauthorized
 }
